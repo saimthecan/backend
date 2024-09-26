@@ -3,8 +3,13 @@ const router = express.Router();
 const User = require('../models/User');
 const axios = require('axios');
 
+// Ana sayfa rotası
+app.get('/', (req, res) => {
+  res.send('Ana sayfa - Coin Tracker API çalışıyor.');
+});
+
 // Tüm kullanıcıları alma veya favorilere göre filtreleme
-router.get('/', async (req, res) => {
+router.get('/users', async (req, res) => {
   try {
     const { favorite } = req.query;
     let users;
