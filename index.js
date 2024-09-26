@@ -16,6 +16,12 @@ app.use(express.json());
 app.use(cors());
 app.use(bodyParser.json());
 
+
+// Ana sayfa rotası
+app.get('/', (req, res) => {
+  res.send('Ana sayfa - Coin Tracker API çalışıyor.');
+});
+
 // MongoDB'ye Bağlanma
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
