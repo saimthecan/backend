@@ -262,4 +262,28 @@ router.delete('/:userId/coins/:coinId/favorite', async (req, res) => {
 });
 
 
+// Tüm kullanıcılardan favori coinleri alma
+router.get('/coins/favorites', async (req, res) => {
+  try {
+    const favoriteCoins = await User.aggregate([
+      { $unwind: '$coins' },
+      { $match: { 'coins.isFavorite': true } },
+      {
+        $project: {
+          _id: 0,
+          userName: '$name',
+          userTwitter: '$twitter',
+          userId: '$_id',
+          coin: '$coins',
+        },
+      },
+    ]);
+
+    res.json(favoriteCoins);
+  } catch (err) {
+    console.error('Favori coinler getirilirken hata oluştu:', err);
+    res.status(500).json({ message: 'Favori coinler getirilirken hata oluştu' });
+  }
+});
+
 module.exports = router;
