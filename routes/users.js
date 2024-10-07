@@ -229,11 +229,37 @@ router.delete('/:id/favorite', async (req, res) => {
   }
 });
 
+// Bir coin'i favorileme
+router.put('/:userId/coins/:coinId/favorite', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    const coin = user.coins.id(req.params.coinId);
+    if (!coin) {
+      return res.status(404).json({ message: 'Coin bulunamadı' });
+    }
+    coin.isFavorite = true;
+    await user.save();
+    res.json(coin);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
-
-
-
-
+// Bir coin'i favoriden çıkarma
+router.delete('/:userId/coins/:coinId/favorite', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    const coin = user.coins.id(req.params.coinId);
+    if (!coin) {
+      return res.status(404).json({ message: 'Coin bulunamadı' });
+    }
+    coin.isFavorite = false;
+    await user.save();
+    res.json(coin);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 
 module.exports = router;
