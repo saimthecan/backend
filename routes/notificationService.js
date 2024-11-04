@@ -9,7 +9,7 @@ const vapidKeys = {
 };
 
 webpush.setVapidDetails(
-  'mailto:your-email@example.com',
+  'mailto:sco11@protonmail.com',
   vapidKeys.publicKey,
   vapidKeys.privateKey
 );
