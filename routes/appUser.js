@@ -4,6 +4,7 @@ const AppUser = require('../models/AppUser');
 const axios = require('axios');
 const authenticateToken = require('../middleware/authenticateToken'); // Import here
 const mongoose = require('mongoose');
+const webpush = require('web-push')
 
 
 // Ana sayfa rotası
@@ -688,6 +689,31 @@ router.get("/admin-influencers", authenticateToken, async (req, res) => {
     res.status(500).json({ message: "Influencerlar alınırken hata oluştu" });
   }
 });
+
+// Push abonelik rotası
+// Push abonelik rotası
+router.post('/:appUserId/subscribe', authenticateToken, async (req, res) => {
+  try {
+    const { subscription } = req.body;
+    const appUserId = req.params.appUserId;
+
+    // Kullanıcıyı bulun
+    const appUser = await AppUser.findById(appUserId);
+    if (!appUser) {
+      return res.status(404).json({ message: 'Kullanıcı bulunamadı' });
+    }
+
+    // Kullanıcıya ait push abonelik bilgisini kaydedin
+    appUser.pushSubscription = subscription;
+    await appUser.save();
+
+    res.status(200).json({ message: 'Push aboneliği başarıyla kaydedildi' });
+  } catch (err) {
+    console.error('Push aboneliği kaydedilirken hata oluştu:', err);
+    res.status(500).json({ message: 'Push aboneliği kaydedilirken hata oluştu' });
+  }
+});
+
 
 
 // Kullanıcı tarafından influencer ekleme
