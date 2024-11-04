@@ -14,11 +14,17 @@ webpush.setVapidDetails(
   vapidKeys.privateKey
 );
 
+console.log('Sunucuda kullanılan VAPID Public Key:', vapidKeys.publicKey);
+console.log('Sunucuda kullanılan VAPID Private Key:', vapidKeys.privateKey);
+
+
 async function sendNotification(payload) {
   try {
     const subscribedUsers = await AppUser.find({ pushSubscription: { $exists: true } });
+    console.log('Abonelikleri olan kullanıcılar:', subscribedUsers);
 
     subscribedUsers.forEach((user) => {
+      console.log(`Kullanıcıya bildirim gönderiliyor: ${user._id}`);
       webpush.sendNotification(user.pushSubscription, JSON.stringify(payload))
         .catch(error => {
           console.error('Error sending notification:', error);
