@@ -44,7 +44,7 @@ app.use('/appUser', appUser); // auth işlemleri için
 const newsRouter = require('./routes/news');
 app.use('/news', newsRouter);
 
-app.get('/vapidPublicKey', (req, res) => {
+app.get('/appUser/vapidPublicKey', (req, res) => {
   res.send(process.env.VAPID_PUBLIC_KEY);
 });
 
