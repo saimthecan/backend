@@ -32,6 +32,13 @@ router.post("/admin-influencers", authenticateToken, async (req, res) => {
     appUser.influencers.push(newInfluencer);
     await appUser.save();
 
+      // Bildirim gönderme
+      await sendNotification({
+        title: 'Yeni Influencer Eklendi',
+        message: `${newInfluencer.name} adlı yeni bir influencer eklendi.`,
+        url: 'https://cointracker-canozgen.netlify.app/', // Bildirim tıklandığında gidilecek URL
+      });
+
     res.status(201).json(newInfluencer);
   } catch (err) {
     console.error("Admin influencer eklerken hata oluştu:", err);
