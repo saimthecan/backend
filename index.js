@@ -45,6 +45,7 @@ const newsRouter = require('./routes/news');
 app.use('/news', newsRouter);
 
 app.get('/appUser/vapidPublicKey', (req, res) => {
+  console.log('Gönderilen VAPID Public Key:', process.env.VAPID_PUBLIC_KEY);
   res.send(process.env.VAPID_PUBLIC_KEY);
 });
 
