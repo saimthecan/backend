@@ -718,6 +718,9 @@ router.get("/admin-influencers", authenticateToken, async (req, res) => {
   }
 });
 
+
+
+
 // Email subscription route
 router.post('/:appUserId/subscribe-email', authenticateToken, async (req, res) => {
   try {
@@ -748,6 +751,47 @@ router.post('/:appUserId/subscribe-email', authenticateToken, async (req, res) =
   }
 });
 
+// routes/appUser.js
+router.post('/:appUserId/unsubscribe-email', authenticateToken, async (req, res) => {
+  try {
+    const appUserId = req.params.appUserId;
+
+    // Kullanıcıyı bulun ve emailini silin
+    const appUser = await AppUser.findByIdAndUpdate(
+      appUserId,
+      { $unset: { email: 1 } },
+      { new: true }
+    );
+
+    if (!appUser) {
+      return res.status(404).json({ message: 'Kullanıcı bulunamadı' });
+    }
+
+    res.status(200).json({ message: 'Email aboneliğiniz iptal edildi' });
+  } catch (err) {
+    console.error('Email aboneliğinden çıkarken hata oluştu:', err);
+    res.status(500).json({ message: 'Email aboneliğinden çıkarken hata oluştu' });
+  }
+});
+
+// routes/appUser.js
+router.get('/:appUserId', authenticateToken, async (req, res) => {
+  try {
+    const appUserId = req.params.appUserId;
+
+    // Kullanıcıyı bulun
+    const appUser = await AppUser.findById(appUserId).select('-password');
+
+    if (!appUser) {
+      return res.status(404).json({ message: 'Kullanıcı bulunamadı' });
+    }
+
+    res.status(200).json(appUser);
+  } catch (err) {
+    console.error('Kullanıcı bilgileri alınırken hata oluştu:', err);
+    res.status(500).json({ message: 'Kullanıcı bilgileri alınırken hata oluştu' });
+  }
+});
 
 
 // Kullanıcı tarafından influencer ekleme
