@@ -1,40 +1,39 @@
-// services/notificationService.js
-
-const webpush = require('web-push');
-const AppUser = require('../models/AppUser');
-
-const vapidKeys = {
-  publicKey: process.env.VAPID_PUBLIC_KEY,
-  privateKey: process.env.VAPID_PRIVATE_KEY,
-};
-
-webpush.setVapidDetails(
-  'mailto:sco11@protonmail.com',
-  vapidKeys.publicKey,
-  vapidKeys.privateKey
-);
-
-console.log('Sunucuda kullanılan VAPID Public Key:', vapidKeys.publicKey);
-console.log('Sunucuda kullanılan VAPID Private Key:', vapidKeys.privateKey);
-
+const nodemailer = require('nodemailer');
 
 async function sendNotification(payload) {
   try {
-    const subscribedUsers = await AppUser.find({ pushSubscription: { $exists: true } });
+    const subscribedUsers = await AppUser.find({ email: { $exists: true, $ne: null } });
     console.log('Abonelikleri olan kullanıcılar:', subscribedUsers);
+
+    // Email gönderme ayarları
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
 
     subscribedUsers.forEach((user) => {
       console.log(`Kullanıcıya bildirim gönderiliyor: ${user._id}`);
-      webpush.sendNotification(user.pushSubscription, JSON.stringify(payload))
-        .catch(error => {
-          console.error('Error sending notification:', error);
-        });
+
+      // Email gönderme işlemi
+      const mailOptions = {
+        from: process.env.EMAIL_USER,
+        to: user.email,
+        subject: payload.title,
+        text: payload.message,
+      };
+
+      transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+          console.error('Error sending email:', error);
+        } else {
+          console.log('Email sent:', info.response);
+        }
+      });
     });
   } catch (error) {
     console.error('Error in sendNotification:', error);
   }
 }
-
-module.exports = {
-  sendNotification,
-};

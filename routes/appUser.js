@@ -5,7 +5,7 @@ const axios = require('axios');
 const authenticateToken = require('../middleware/authenticateToken'); // Import here
 const mongoose = require('mongoose');
 const webpush = require('web-push')
-const { sendNotification } = require('./notificationService');
+const { sendEmail } = require('../services/emailService');
 
 
 
@@ -35,12 +35,17 @@ router.post("/admin-influencers", authenticateToken, async (req, res) => {
     appUser.influencers.push(newInfluencer);
     await appUser.save();
 
-      // Bildirim gönderme
-      await sendNotification({
-        title: 'Yeni Influencer Eklendi',
-        message: `${newInfluencer.name} adlı yeni bir influencer eklendi.`,
-        url: 'https://cointracker-canozgen.netlify.app/', // Bildirim tıklandığında gidilecek URL
-      });
+    // Fetch all users who have an email subscription
+    const subscribedUsers = await AppUser.find({ email: { $exists: true, $ne: null } });
+
+    // Send an email to each subscribed user
+    const emailPromises = subscribedUsers.map((user) => {
+      const subject = 'New Influencer Added';
+      const message = `${newInfluencer.name} has been added as a new influencer.`;
+      return sendEmail(user.email, subject, message);
+    });
+
+    await Promise.all(emailPromises);
 
     res.status(201).json(newInfluencer);
   } catch (err) {
@@ -700,27 +705,33 @@ router.get("/admin-influencers", authenticateToken, async (req, res) => {
   }
 });
 
-// Push abonelik rotası
-// Push abonelik rotası
-router.post('/:appUserId/subscribe', authenticateToken, async (req, res) => {
+// Email subscription route
+router.post('/:appUserId/subscribe-email', authenticateToken, async (req, res) => {
   try {
-    const { subscription } = req.body;
+    const { email } = req.body;
     const appUserId = req.params.appUserId;
 
-    // Kullanıcıyı bulun
-    const appUser = await AppUser.findById(appUserId);
-    if (!appUser) {
-      return res.status(404).json({ message: 'Kullanıcı bulunamadı' });
+    // Validate email format (optional but recommended)
+    const emailRegex = /\S+@\S+\.\S+/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email address' });
     }
 
-    // Kullanıcıya ait push abonelik bilgisini kaydedin
-    appUser.pushSubscription = subscription;
-    await appUser.save();
+    // Find and update the user
+    const appUser = await AppUser.findByIdAndUpdate(
+      appUserId,
+      { email },
+      { new: true }
+    );
 
-    res.status(200).json({ message: 'Push aboneliği başarıyla kaydedildi' });
+    if (!appUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ message: 'Email subscription successful' });
   } catch (err) {
-    console.error('Push aboneliği kaydedilirken hata oluştu:', err);
-    res.status(500).json({ message: 'Push aboneliği kaydedilirken hata oluştu' });
+    console.error('Error subscribing email:', err);
+    res.status(500).json({ message: 'Error subscribing email' });
   }
 });
 
