@@ -7,11 +7,11 @@ const transporter = nodemailer.createTransport({
     user: process.env.EMAIL_USER, // Your email address
     pass: process.env.EMAIL_PASS, // Your email password or app-specific password
   },
-});
+}); 
 
 async function sendEmail(to, subject, text, html) {
   const mailOptions = {
-    from: process.env.EMAIL_USER,
+    from: `"Coin Tracker" <${process.env.EMAIL_USER}>`,
     to,
     subject,
     text,
