@@ -183,10 +183,10 @@ router.post(
           `DexScreener Linki: ${dexScreenerUrl}`;
 
         const htmlContent = `
-<p>${influencer.name} influencer'ına yeni bir coin eklendi: <strong>${addedCoin.name} (${addedCoin.symbol})</strong>.</p>
-<p>Eklenme Fiyatı: ${addedCoin.sharePrice}</p>
-<p>Eklenme MarketCap Değeri: ${addedCoin.shareMarketCap}</p>
-<p><a href="${dexScreenerUrl}">DexScreener Linki</a></p>
+          <p>${influencer.name} influencer'ına yeni bir coin eklendi: <strong>${addedCoin.name} (${addedCoin.symbol})</strong>.</p>
+          <p>Eklenme Fiyatı: ${addedCoin.sharePrice}</p>
+          <p>Eklenme MarketCap Değeri: ${addedCoin.shareMarketCap}</p>
+          <p><a href="${dexScreenerUrl}">DexScreener Linki</a></p>
 `;
         return sendEmail(user.email, subject, message, htmlContent);
       });
@@ -876,12 +876,10 @@ router.delete(
       res.status(200).json({ message: "Fenomen silindi" });
     } catch (err) {
       console.error("Fenomen silinirken hata oluştu:", err.message);
-      res
-        .status(500)
-        .json({
-          message: "Fenomen silinirken hata oluştu",
-          error: err.message,
-        });
+      res.status(500).json({
+        message: "Fenomen silinirken hata oluştu",
+        error: err.message,
+      });
     }
   }
 );
@@ -1517,12 +1515,10 @@ router.get("/:appUserId/influencers/highlights", async (req, res) => {
     });
   } catch (err) {
     console.error("Öne çıkan veriler alınırken hata oluştu:", err);
-    res
-      .status(500)
-      .json({
-        message: "Öne çıkan veriler alınırken hata oluştu.",
-        error: err.message,
-      });
+    res.status(500).json({
+      message: "Öne çıkan veriler alınırken hata oluştu.",
+      error: err.message,
+    });
   }
 });
 
