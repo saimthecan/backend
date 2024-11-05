@@ -180,13 +180,13 @@ router.post(
         const subject = "New Coin Added";
         // Mesaj ve HTML içeriği
         const message =
-          `${influencer.name} A new coin has been added to the influencer: ${addedCoin.name} (${addedCoin.symbol}).\n` +
+          `A new coin has been added to the influencer named ${influencer.name}: ${addedCoin.name} (${addedCoin.symbol}).\n` +
           `Posted Price: ${addedCoin.sharePrice}\n` +
           `Posted MarketCap: ${addedCoin.shareMarketCap}\n` +
           `DexScreener Link: ${dexScreenerUrl}`;
 
         const htmlContent = `
-          <p>${influencer.name} A new coin has been added to the influencer: <strong>${addedCoin.name} (${addedCoin.symbol})</strong>.</p>
+          <p>A new coin has been added to the influencer named ${influencer.name}: <strong>${addedCoin.name} (${addedCoin.symbol})</strong>.</p>
           <p>Posted Price: ${addedCoin.sharePrice}</p>
           <p>Posted MarketCap: ${addedCoin.shareMarketCap}</p>
           <p><a href="${dexScreenerUrl}">DexScreener Link</a></p>
