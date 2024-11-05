@@ -42,8 +42,8 @@ router.post("/admin-influencers", authenticateToken, async (req, res) => {
       const subject = "New Influencer Added";
       const message = `${newInfluencer.name} has been added as a new influencer.`;
       const htmlContent = `
-      <p>${newInfluencer.name} adlı yeni bir influencer eklendi.</p>
-      <p><a href="https://cointracker-canozgen.netlify.app/">Uygulamayı Aç</a></p>
+      <p>A new influencer named ${newInfluencer.name} has been added.</p>
+      <p><a href="https://cointracker-canozgen.netlify.app/admin-influencers">Go to App</a></p>
     `;
       return sendEmail(user.email, subject, message, htmlContent);
     });
@@ -177,19 +177,19 @@ router.post(
 
       // Her kullanıcıya email gönderin
       const emailPromises = subscribedUsers.map((user) => {
-        const subject = "Yeni Coin Eklendi";
+        const subject = "New Coin Added";
         // Mesaj ve HTML içeriği
         const message =
-          `${influencer.name} influencer'ına yeni bir coin eklendi: ${addedCoin.name} (${addedCoin.symbol}).\n` +
-          `Eklenme Fiyatı: ${addedCoin.sharePrice}\n` +
-          `Eklenme MarketCap Değeri: ${addedCoin.shareMarketCap}\n` +
-          `DexScreener Linki: ${dexScreenerUrl}`;
+          `${influencer.name} A new coin has been added to the influencer: ${addedCoin.name} (${addedCoin.symbol}).\n` +
+          `Posted Price: ${addedCoin.sharePrice}\n` +
+          `Posted MarketCap: ${addedCoin.shareMarketCap}\n` +
+          `DexScreener Link: ${dexScreenerUrl}`;
 
         const htmlContent = `
-          <p>${influencer.name} influencer'ına yeni bir coin eklendi: <strong>${addedCoin.name} (${addedCoin.symbol})</strong>.</p>
-          <p>Eklenme Fiyatı: ${addedCoin.sharePrice}</p>
-          <p>Eklenme MarketCap Değeri: ${addedCoin.shareMarketCap}</p>
-          <p><a href="${dexScreenerUrl}">DexScreener Linki</a></p>
+          <p>${influencer.name} A new coin has been added to the influencer: <strong>${addedCoin.name} (${addedCoin.symbol})</strong>.</p>
+          <p>Posted Price: ${addedCoin.sharePrice}</p>
+          <p>Posted MarketCap: ${addedCoin.shareMarketCap}</p>
+          <p><a href="${dexScreenerUrl}">DexScreener Link</a></p>
 `;
         return sendEmail(user.email, subject, message, htmlContent);
       });
@@ -537,7 +537,6 @@ router.get("/admin-influencers/average-profits", async (req, res) => {
 router.get("/admin-influencers/highlights", async (req, res) => {
   try {
     const appUser = await AppUser.findOne({ role: "admin" });
-    console.log("Admin User:", appUser);
 
     // Eğer adminId 'ObjectId' türünde bir değer bekliyorsa, doğrulama yap
     if (!mongoose.Types.ObjectId.isValid(appUser._id)) {
@@ -560,7 +559,6 @@ router.get("/admin-influencers/highlights", async (req, res) => {
 
     // Her influencer'ın coinlerini topla
     for (const influencer of appUser.influencers) {
-      console.log("Influencer:", influencer);
       const coins = influencer.coins;
       if (coins.length > mostCoinsCount) {
         mostCoinsCount = coins.length;
@@ -1506,11 +1504,12 @@ router.get("/:appUserId/influencers/highlights", async (req, res) => {
 
     // Sonuçları döndür
     res.json({
-      _id: mostCoinsInfluencer._id,
+      _id: mostCoinsInfluencer ? mostCoinsInfluencer._id : null,
       highestAvgProfitUser,
       highestProfitCoin,
       mostCoinsInfluencer: mostCoinsInfluencer
         ? {
+          _id: mostCoinsInfluencer._id,
             name: mostCoinsInfluencer.name,
             coinCount: mostCoinsCount,
           }
