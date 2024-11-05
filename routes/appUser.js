@@ -147,6 +147,9 @@ router.post(
       const pair = pairs[0];
       const tokenData = pair.baseToken;
 
+      // DexScreener URL'sini alın
+      const dexScreenerUrl = pair.url; 
+
       // shareDate ve shareMarketCap'i alıyoruz
       const shareDate = new Date(req.body.shareDate);
       const shareMarketCap = req.body.shareMarketCap;
