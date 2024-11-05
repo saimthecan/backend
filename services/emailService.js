@@ -15,6 +15,7 @@ async function sendEmail(to, subject, text) {
     to,
     subject,
     text,
+    html,
   };
 
   try {
