@@ -163,6 +163,19 @@ router.post(
       // Yeni eklenen coin'i almak için
       const addedCoin = influencer.coins[influencer.coins.length - 1];
 
+       // *** Burada email bildirimlerini gönderiyoruz ***
+      // Email aboneliği olan kullanıcıları bulun
+      const subscribedUsers = await AppUser.find({ email: { $exists: true, $ne: null } });
+
+      // Her kullanıcıya email gönderin
+      const emailPromises = subscribedUsers.map((user) => {
+        const subject = 'Yeni Coin Eklendi';
+        const message = `${influencer.name} influencer'ına yeni bir coin eklendi: ${addedCoin.name} (${addedCoin.symbol}).`;
+        return sendEmail(user.email, subject, message);
+      });
+
+      await Promise.all(emailPromises);
+
       res.status(201).json(addedCoin);
     } catch (err) {
       console.error("Hata:", err);
