@@ -7,6 +7,9 @@ const mongoose = require("mongoose");
 const webpush = require("web-push");
 const { sendEmail } = require("../services/emailService");
 
+const cache = {};
+const CACHE_TTL_MS = 60 * 1000; // 1 dakika
+
 // Ana sayfa rotası
 router.get("/", (req, res) => {
   res.send("Ana sayfa - Coin Tracker API çalışıyor.");
@@ -302,6 +305,99 @@ router.delete(
     }
   }
 );
+
+// Örneğin: GET /admin-influencers/latest-coins
+router.get("/admin-influencers/latest-coins", async (req, res) => {
+  try {
+    const adminUser = await AppUser.findOne({ role: "admin" });
+    if (!adminUser) {
+      return res.status(404).json({ message: "Admin kullanıcı bulunamadı" });
+    }
+
+    const { influencers } = adminUser;
+    let allCoins = [];
+    influencers.forEach((influencer) => {
+      influencer.coins.forEach((coin) => {
+        allCoins.push({
+          ...coin.toObject(),
+          influencerName: influencer.name,
+          influencerId: influencer._id,
+        });
+      });
+    });
+
+    // Tarihe göre sıralama (en yeni en üst)
+    allCoins.sort((a, b) => new Date(b.shareDate) - new Date(a.shareDate));
+
+    // DexScreener verisi
+    for (const coin of allCoins) {
+      if (coin.caAddress) {
+        // 1) Cache kontrolü
+        const cacheItem = cache[coin.caAddress];
+        const now = Date.now();
+
+        if (!cacheItem || (now - cacheItem.timestamp) > CACHE_TTL_MS) {
+          // Cache yok veya süre dolmuş, DexScreener’a git
+          try {
+            const response = await axios.get(
+              `https://api.dexscreener.com/latest/dex/tokens/${coin.caAddress}`
+            );
+            const pairs = response.data.pairs;
+            if (pairs && pairs.length > 0) {
+              const pair = pairs[0];
+              const currentPrice = pair.priceUsd;
+              const url = pair.url;
+
+              // Cache’e kaydet
+              cache[coin.caAddress] = {
+                currentPrice,
+                url,
+                timestamp: now
+              };
+              coin.currentPrice = currentPrice;
+              coin.url = url;
+            }
+          } catch (err) {
+            console.error("DexScreener hata:", err.message);
+            coin.currentPrice = null;
+            coin.url = null;
+          }
+        } else {
+          // 2) Cacheten oku
+          coin.currentPrice = cacheItem.currentPrice;
+          coin.url = cacheItem.url;
+        }
+      }
+    }
+
+    // Kar/zar hesapla
+    allCoins = allCoins.map((coin) => {
+      const shareP = parseFloat(coin.sharePrice);
+      const currentP = parseFloat(coin.currentPrice || 0);
+
+      let profitPercentage = 0;
+      if (shareP && currentP) {
+        profitPercentage = ((currentP - shareP) / shareP) * 100;
+      }
+
+      return {
+        ...coin,
+        profitPercentage,
+      };
+    });
+
+    res.json(allCoins);
+  } catch (err) {
+    console.error("latest-coins hata:", err);
+    res.status(500).json({
+      message: "Admin influencer coinleri alınırken hata oluştu",
+      error: err.message,
+    });
+  }
+});
+
+
+
 
 // Admin influencer'ını favorilere ekleme
 router.put(
