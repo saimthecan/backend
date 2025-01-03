@@ -1415,11 +1415,13 @@ router.get("/:userId/average-profits", async (req, res) => {
         influencerName: influencer.name,
         totalProfit: 0,
         coinCount: influencer.coins.length,
+        rugPullCount: 0, 
       };
 
       const coinPromises = influencer.coins.map(async (coin) => {
         const caAddress = coin.caAddress;
 
+         // Cache kontrolü
         if (!coinMarketCapCache[caAddress]) {
           try {
             const response = await axios.get(
@@ -1448,6 +1450,11 @@ router.get("/:userId/average-profits", async (req, res) => {
           influencerProfitData.totalProfit += profitPercentage;
           totalProfit += profitPercentage;
           validCoinCount += 1;
+        }
+
+         // Rugpull mı? (yani %90 ve üzeri kayıp)
+         if (profitPercentage <= -90) {
+          influencerProfitData.rugPullCount += 1;
         }
       });
 
