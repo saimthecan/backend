@@ -1445,16 +1445,17 @@ router.get("/:userId/average-profits", async (req, res) => {
         const shareMarketCap = coin.shareMarketCap;
 
         if (currentMarketCap && shareMarketCap) {
-          const profitPercentage =
-            ((currentMarketCap - shareMarketCap) / shareMarketCap) * 100;
+          const profitPercentage = ((currentMarketCap - shareMarketCap) / shareMarketCap) * 100;
+          
+          // totalProfit, validCoinCount gibi hesaplar
           influencerProfitData.totalProfit += profitPercentage;
           totalProfit += profitPercentage;
           validCoinCount += 1;
-        }
-
-         // Rugpull mı? (yani %90 ve üzeri kayıp)
-         if (profitPercentage <= -90) {
-          influencerProfitData.rugPullCount += 1;
+        
+          // Rugpull mı? (yani %90 ve üzeri kayıp)
+          if (profitPercentage <= -85) {
+            influencerProfitData.rugPullCount += 1;
+          }
         }
       });
 
