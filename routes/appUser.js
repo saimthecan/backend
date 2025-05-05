@@ -12,6 +12,99 @@ router.get("/", (req, res) => {
   res.send("Ana sayfa - Coin Tracker API çalışıyor.");
 });
 
+router.get("/grouped-coins", async (req, res) => {
+  try {
+    const allUsers = await AppUser.find({});
+    const coinMap = new Map();
+
+    for (const user of allUsers) {
+      for (const influencer of user.influencers) {
+        for (const coin of influencer.coins) {
+          if (!coin.caAddress) continue;
+
+          const ca = coin.caAddress.toLowerCase();
+
+          if (!coinMap.has(ca)) {
+            coinMap.set(ca, {
+              caAddress: ca,
+              name: coin.name,
+              symbol: coin.symbol,
+              sharedBy: [],
+            });
+          }
+
+          const twitterHandle = influencer.twitter?.split("/").pop();
+          coinMap.get(ca).sharedBy.push({
+            influencerName: influencer.name,
+            twitter: influencer.twitter,
+            profileImage: twitterHandle
+              ? `https://unavatar.io/twitter/${twitterHandle}`
+              : null,
+            sharePrice: coin.sharePrice,
+            shareMarketCap: coin.shareMarketCap,
+            shareDate: coin.shareDate,
+          });
+        }
+      }
+    }
+
+    // API'den gerçek değerleri çekiyoruz
+    const enrichedCoins = await Promise.all(
+      Array.from(coinMap.values()).map(async (coin) => {
+        try {
+          const res = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${coin.caAddress}`);
+          const pair = res.data.pairs?.[0];
+
+          if (!pair) throw new Error("Pair bulunamadı");
+
+          const currentPrice = parseFloat(pair.priceUsd);
+          const currentMarketCap = pair.marketCap;
+          const imageUrl = `https://dd.dexscreener.com/ds-data/tokens/${pair.chainId}/${coin.caAddress}.png?size=lg`;
+          const networkMap = {
+            ethereum: "Ethereum",
+            bsc: "BSC",
+            polygon: "Polygon",
+            arbitrum: "Arbitrum",
+            optimism: "Optimism",
+            avalanche: "Avalanche",
+            fantom: "Fantom",
+          };
+          const network = networkMap[pair.chainId] || pair.chainId;
+
+          // sharedBy array'ine marketCapComparison ekle
+          const updatedSharers = coin.sharedBy.map((sharer) => ({
+            ...sharer,
+            marketCapComparison: sharer.shareMarketCap
+              ? +(((currentMarketCap - sharer.shareMarketCap) / sharer.shareMarketCap) * 100).toFixed(2)
+              : null,
+            currentPrice,
+            currentMarketCap,
+          }));
+
+          return {
+            ...coin,
+            imageUrl,
+            url: pair.url,
+            currentPrice,
+            currentMarketCap,
+            network,
+            sharedBy: updatedSharers,
+          };
+        } catch (err) {
+          console.error(`Dex error for ${coin.caAddress}:`, err.message);
+          return null;
+        }
+      })
+    );
+
+    res.json(enrichedCoins.filter(Boolean));
+  } catch (err) {
+    console.error("Grouped coins endpoint error:", err.message);
+    res.status(500).json({ message: "Veriler alınırken hata oluştu" });
+  }
+});
+
+
 // Admin influencer ekleme
 router.post("/admin-influencers", authenticateToken, async (req, res) => {
   try {
@@ -302,6 +395,8 @@ router.delete(
     }
   }
 );
+
+
 
 // Admin influencer'ını favorilere ekleme
 router.put(
@@ -1567,5 +1662,7 @@ router.get("/:appUserId/influencer/:influencerId", async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+
 
 module.exports = router;
