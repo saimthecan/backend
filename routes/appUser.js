@@ -7,155 +7,13 @@ const mongoose = require("mongoose");
 const webpush = require("web-push");
 const { sendEmail } = require("../services/emailService");
 
+const cache = {};
+const CACHE_TTL_MS = 60 * 1000; // 1 dakika
+
 // Ana sayfa rotası
 router.get("/", (req, res) => {
   res.send("Ana sayfa - Coin Tracker API çalışıyor.");
 });
-
-
-// Global memory cache
-let groupedCoinsCache = null;
-let groupedCoinsTimestamp = 0;
-const CACHE_DURATION = 15 * 60 * 1000; // 15 dakika
-
-// Delay helper
-const delay = (ms) => new Promise((res) => setTimeout(res, ms));
-
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 1000;
-
-// Basit memory cache for CA data
-const dexCache = new Map();
-
-const getDexDataWithCache = async (caAddress) => {
-  if (dexCache.has(caAddress)) {
-    return dexCache.get(caAddress);
-  }
-
-  try {
-    const res = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${caAddress}`);
-    const pair = res.data.pairs?.[0];
-    if (!pair) return null;
-
-    const data = {
-      currentPrice: parseFloat(pair.priceUsd),
-      currentMarketCap: pair.marketCap,
-      imageUrl: `https://dd.dexscreener.com/ds-data/tokens/${pair.chainId}/${caAddress}.png?size=lg`,
-      url: pair.url,
-      network: pair.chainId,
-    };
-
-    dexCache.set(caAddress, data);
-
-    // 5 dakikalık geçici cache
-    setTimeout(() => dexCache.delete(caAddress), 5 * 60 * 1000);
-
-    return data;
-  } catch (err) {
-    console.error(`Dex error for ${caAddress}:`, err.message);
-    return null;
-  }
-};
-
-// Tüm coin’leri işleyen fonksiyon
-const generateEnrichedCoinList = async () => {
-  const allUsers = await AppUser.find({});
-  const coinMap = new Map();
-
-  for (const user of allUsers) {
-    for (const influencer of user.influencers) {
-      for (const coin of influencer.coins) {
-        if (!coin.caAddress) continue;
-        const ca = coin.caAddress.toLowerCase();
-
-        if (!coinMap.has(ca)) {
-          coinMap.set(ca, {
-            caAddress: ca,
-            name: coin.name,
-            symbol: coin.symbol,
-            sharedBy: [],
-          });
-        }
-
-        const twitterHandle = influencer.twitter?.split("/").pop();
-        coinMap.get(ca).sharedBy.push({
-          influencerName: influencer.name,
-          twitter: influencer.twitter,
-          profileImage: twitterHandle ? `https://unavatar.io/twitter/${twitterHandle}` : null,
-          sharePrice: coin.sharePrice,
-          shareMarketCap: coin.shareMarketCap,
-          shareDate: coin.shareDate,
-        });
-      }
-    }
-  }
-
-  const coinList = Array.from(coinMap.values());
-  const enrichedCoins = [];
-
-  for (let i = 0; i < coinList.length; i += BATCH_SIZE) {
-    const batch = coinList.slice(i, i + BATCH_SIZE);
-
-    const batchResults = await Promise.all(
-      batch.map(async (coin) => {
-        const dexData = await getDexDataWithCache(coin.caAddress);
-        if (!dexData) return null;
-
-        const { currentPrice, currentMarketCap, imageUrl, url, network } = dexData;
-
-        const updatedSharers = coin.sharedBy.map((sharer) => ({
-          ...sharer,
-          marketCapComparison: sharer.shareMarketCap
-            ? +(((currentMarketCap - sharer.shareMarketCap) / sharer.shareMarketCap) * 100).toFixed(2)
-            : null,
-          currentPrice,
-          currentMarketCap,
-        }));
-
-        return {
-          ...coin,
-          imageUrl,
-          url,
-          currentPrice,
-          currentMarketCap,
-          network,
-          sharedBy: updatedSharers,
-        };
-      })
-    );
-
-    enrichedCoins.push(...batchResults.filter(Boolean));
-
-    if (i + BATCH_SIZE < coinList.length) {
-      await delay(BATCH_DELAY); // Sıradaki batch öncesi bekle
-    }
-  }
-
-  return enrichedCoins;
-};
-
-// Route
-router.get("/grouped-coins", async (req, res) => {
-  const now = Date.now();
-
-  if (groupedCoinsCache && (now - groupedCoinsTimestamp) < CACHE_DURATION) {
-    return res.json(groupedCoinsCache); // Cache'den döndür
-  }
-
-  try {
-    const enrichedCoins = await generateEnrichedCoinList();
-
-    groupedCoinsCache = enrichedCoins;
-    groupedCoinsTimestamp = now;
-
-    res.json(enrichedCoins);
-  } catch (err) {
-    console.error("Grouped coins endpoint error:", err.message);
-    res.status(500).json({ message: "Veriler alınırken hata oluştu" });
-  }
-});
-
-
 
 // Admin influencer ekleme
 router.post("/admin-influencers", authenticateToken, async (req, res) => {
@@ -459,8 +317,6 @@ router.delete(
     }
   }
 );
-
-
 
 // Admin influencer'ını favorilere ekleme
 router.put(
@@ -1488,11 +1344,13 @@ router.get("/:userId/average-profits", async (req, res) => {
         influencerName: influencer.name,
         totalProfit: 0,
         coinCount: influencer.coins.length,
+        rugPullCount: 0, 
       };
 
       const coinPromises = influencer.coins.map(async (coin) => {
         const caAddress = coin.caAddress;
 
+         // Cache kontrolü
         if (!coinMarketCapCache[caAddress]) {
           try {
             const response = await axios.get(
@@ -1516,11 +1374,17 @@ router.get("/:userId/average-profits", async (req, res) => {
         const shareMarketCap = coin.shareMarketCap;
 
         if (currentMarketCap && shareMarketCap) {
-          const profitPercentage =
-            ((currentMarketCap - shareMarketCap) / shareMarketCap) * 100;
+          const profitPercentage = ((currentMarketCap - shareMarketCap) / shareMarketCap) * 100;
+          
+          // totalProfit, validCoinCount gibi hesaplar
           influencerProfitData.totalProfit += profitPercentage;
           totalProfit += profitPercentage;
           validCoinCount += 1;
+        
+          // Rugpull mı? (yani %90 ve üzeri kayıp)
+          if (profitPercentage <= -85) {
+            influencerProfitData.rugPullCount += 1;
+          }
         }
       });
 
