@@ -4,7 +4,6 @@ const AppUser = require("../models/AppUser");
 const axios = require("axios");
 const authenticateToken = require("../middleware/authenticateToken"); // Import here
 const mongoose = require("mongoose");
-const webpush = require("web-push");
 const { sendEmail } = require("../services/emailService");
 
 // Ana sayfa rotası
@@ -12,97 +11,151 @@ router.get("/", (req, res) => {
   res.send("Ana sayfa - Coin Tracker API çalışıyor.");
 });
 
-router.get("/grouped-coins", async (req, res) => {
+
+// Global memory cache
+let groupedCoinsCache = null;
+let groupedCoinsTimestamp = 0;
+const CACHE_DURATION = 15 * 60 * 1000; // 15 dakika
+
+// Delay helper
+const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+
+const BATCH_SIZE = 5;
+const BATCH_DELAY = 1000;
+
+// Basit memory cache for CA data
+const dexCache = new Map();
+
+const getDexDataWithCache = async (caAddress) => {
+  if (dexCache.has(caAddress)) {
+    return dexCache.get(caAddress);
+  }
+
   try {
-    const allUsers = await AppUser.find({});
-    const coinMap = new Map();
+    const res = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${caAddress}`);
+    const pair = res.data.pairs?.[0];
+    if (!pair) return null;
 
-    for (const user of allUsers) {
-      for (const influencer of user.influencers) {
-        for (const coin of influencer.coins) {
-          if (!coin.caAddress) continue;
+    const data = {
+      currentPrice: parseFloat(pair.priceUsd),
+      currentMarketCap: pair.marketCap,
+      imageUrl: `https://dd.dexscreener.com/ds-data/tokens/${pair.chainId}/${caAddress}.png?size=lg`,
+      url: pair.url,
+      network: pair.chainId,
+    };
 
-          const ca = coin.caAddress.toLowerCase();
+    dexCache.set(caAddress, data);
 
-          if (!coinMap.has(ca)) {
-            coinMap.set(ca, {
-              caAddress: ca,
-              name: coin.name,
-              symbol: coin.symbol,
-              sharedBy: [],
-            });
-          }
+    // 5 dakikalık geçici cache
+    setTimeout(() => dexCache.delete(caAddress), 5 * 60 * 1000);
 
-          const twitterHandle = influencer.twitter?.split("/").pop();
-          coinMap.get(ca).sharedBy.push({
-            influencerName: influencer.name,
-            twitter: influencer.twitter,
-            profileImage: twitterHandle
-              ? `https://unavatar.io/twitter/${twitterHandle}`
-              : null,
-            sharePrice: coin.sharePrice,
-            shareMarketCap: coin.shareMarketCap,
-            shareDate: coin.shareDate,
+    return data;
+  } catch (err) {
+    console.error(`Dex error for ${caAddress}:`, err.message);
+    return null;
+  }
+};
+
+// Tüm coin’leri işleyen fonksiyon
+const generateEnrichedCoinList = async () => {
+  const allUsers = await AppUser.find({});
+  const coinMap = new Map();
+
+  for (const user of allUsers) {
+    for (const influencer of user.influencers) {
+      for (const coin of influencer.coins) {
+        if (!coin.caAddress) continue;
+        const ca = coin.caAddress.toLowerCase();
+
+        if (!coinMap.has(ca)) {
+          coinMap.set(ca, {
+            caAddress: ca,
+            name: coin.name,
+            symbol: coin.symbol,
+            sharedBy: [],
           });
         }
+
+        const twitterHandle = influencer.twitter?.split("/").pop();
+        coinMap.get(ca).sharedBy.push({
+          influencerName: influencer.name,
+          twitter: influencer.twitter,
+          profileImage: twitterHandle ? `https://unavatar.io/twitter/${twitterHandle}` : null,
+          sharePrice: coin.sharePrice,
+          shareMarketCap: coin.shareMarketCap,
+          shareDate: coin.shareDate,
+        });
       }
     }
+  }
 
-    // API'den gerçek değerleri çekiyoruz
-    const enrichedCoins = await Promise.all(
-      Array.from(coinMap.values()).map(async (coin) => {
-        try {
-          const res = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${coin.caAddress}`);
-          const pair = res.data.pairs?.[0];
+  const coinList = Array.from(coinMap.values());
+  const enrichedCoins = [];
 
-          if (!pair) throw new Error("Pair bulunamadı");
+  for (let i = 0; i < coinList.length; i += BATCH_SIZE) {
+    const batch = coinList.slice(i, i + BATCH_SIZE);
 
-          const currentPrice = parseFloat(pair.priceUsd);
-          const currentMarketCap = pair.marketCap;
-          const imageUrl = `https://dd.dexscreener.com/ds-data/tokens/${pair.chainId}/${coin.caAddress}.png?size=lg`;
-          const networkMap = {
-            ethereum: "Ethereum",
-            bsc: "BSC",
-            polygon: "Polygon",
-            arbitrum: "Arbitrum",
-            optimism: "Optimism",
-            avalanche: "Avalanche",
-            fantom: "Fantom",
-          };
-          const network = networkMap[pair.chainId] || pair.chainId;
+    const batchResults = await Promise.all(
+      batch.map(async (coin) => {
+        const dexData = await getDexDataWithCache(coin.caAddress);
+        if (!dexData) return null;
 
-          // sharedBy array'ine marketCapComparison ekle
-          const updatedSharers = coin.sharedBy.map((sharer) => ({
-            ...sharer,
-            marketCapComparison: sharer.shareMarketCap
-              ? +(((currentMarketCap - sharer.shareMarketCap) / sharer.shareMarketCap) * 100).toFixed(2)
-              : null,
-            currentPrice,
-            currentMarketCap,
-          }));
+        const { currentPrice, currentMarketCap, imageUrl, url, network } = dexData;
 
-          return {
-            ...coin,
-            imageUrl,
-            url: pair.url,
-            currentPrice,
-            currentMarketCap,
-            network,
-            sharedBy: updatedSharers,
-          };
-        } catch (err) {
-          console.error(`Dex error for ${coin.caAddress}:`, err.message);
-          return null;
-        }
+        const updatedSharers = coin.sharedBy.map((sharer) => ({
+          ...sharer,
+          marketCapComparison: sharer.shareMarketCap
+            ? +(((currentMarketCap - sharer.shareMarketCap) / sharer.shareMarketCap) * 100).toFixed(2)
+            : null,
+          currentPrice,
+          currentMarketCap,
+        }));
+
+        return {
+          ...coin,
+          imageUrl,
+          url,
+          currentPrice,
+          currentMarketCap,
+          network,
+          sharedBy: updatedSharers,
+        };
       })
     );
 
-    res.json(enrichedCoins.filter(Boolean));
+    enrichedCoins.push(...batchResults.filter(Boolean));
+
+    if (i + BATCH_SIZE < coinList.length) {
+      await delay(BATCH_DELAY); // Sıradaki batch öncesi bekle
+    }
+  }
+
+  return enrichedCoins;
+};
+
+
+
+// Route
+router.get("/grouped-coins", async (req, res) => {
+  const now = Date.now();
+
+  if (groupedCoinsCache && (now - groupedCoinsTimestamp) < CACHE_DURATION) {
+    return res.json(groupedCoinsCache); // Cache'den döndür
+  }
+
+  try {
+    const enrichedCoins = await generateEnrichedCoinList();
+
+    groupedCoinsCache = enrichedCoins;
+    groupedCoinsTimestamp = now;
+
+    res.json(enrichedCoins);
   } catch (err) {
     console.error("Grouped coins endpoint error:", err.message);
     res.status(500).json({ message: "Veriler alınırken hata oluştu" });
   }
 });
+
 
 
 // Admin influencer ekleme
@@ -259,6 +312,10 @@ router.post(
       influencer.coins.push(newCoin);
       await adminUser.save();
 
+      // Cache sıfırlama
+      groupedCoinsCache = null;
+      groupedCoinsTimestamp = 0;
+
       // Yeni eklenen coin'i almak için
       const addedCoin = influencer.coins[influencer.coins.length - 1];
 
@@ -340,6 +397,11 @@ router.put(
       coin.shareMarketCap = req.body.shareMarketCap || coin.shareMarketCap;
 
       await adminUser.save();
+
+      // Cache sıfırlama
+      groupedCoinsCache = null;
+      groupedCoinsTimestamp = 0;
+
       res.json(coin);
     } catch (err) {
       console.error("Coin güncellenirken hata oluştu:", err);
@@ -388,6 +450,9 @@ router.delete(
 
       await adminUser.save();
 
+      groupedCoinsCache = null;
+      groupedCoinsTimestamp = 0;      
+
       res.status(200).json({ message: "Coin silindi" });
     } catch (err) {
       console.error("Coin silinirken hata oluştu:", err);
@@ -396,6 +461,67 @@ router.delete(
   }
 );
 
+
+// En son paylaşılan coinleri döner
+router.get("/admin-influencers/latest-coins", authenticateToken, async (req, res) => {
+  try {
+    const adminUser = await AppUser.findOne({ role: "admin" });
+
+    if (!adminUser) {
+      return res.status(404).json({ message: "Admin kullanıcı bulunamadı." });
+    }
+
+    const latestCoins = [];
+
+    for (const influencer of adminUser.influencers) {
+      for (const coin of influencer.coins) {
+        latestCoins.push({
+          _id: coin._id,
+          name: coin.name,
+          symbol: coin.symbol,
+          shareDate: coin.shareDate,
+          sharePrice: coin.sharePrice,
+          shareMarketCap: coin.shareMarketCap,
+          influencerId: influencer._id,
+          influencerName: influencer.name,
+          caAddress: coin.caAddress,
+        });
+      }
+    }
+
+    // En son tarihlilere göre sırala
+    latestCoins.sort((a, b) => new Date(b.shareDate) - new Date(a.shareDate));
+
+    // Dexscreener fiyatlarını ekle
+    const enriched = await Promise.all(latestCoins.map(async (coin) => {
+      try {
+        const response = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${coin.caAddress}`);
+        const pair = response.data.pairs?.[0];
+        if (pair) {
+          const currentPrice = parseFloat(pair.priceUsd);
+          const profitPercentage = coin.sharePrice
+            ? ((currentPrice - coin.sharePrice) / coin.sharePrice) * 100
+            : null;
+          return {
+            ...coin,
+            currentPrice,
+            profitPercentage,
+            url: pair.url,
+          };
+        }
+        return { ...coin, currentPrice: null, profitPercentage: null };
+      } catch (err) {
+        console.error(`Dex error for ${coin.name}:`, err.message);
+        return { ...coin, currentPrice: null, profitPercentage: null };
+      }
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    console.error("latest-coins endpoint error:", err.message);
+    res.status(500).json({ message: "En son coinler alınırken hata oluştu." });
+  }
+});
 
 
 // Admin influencer'ını favorilere ekleme
@@ -1135,6 +1261,10 @@ router.post("/:appUserId/coins", async (req, res) => {
     appUser.coins.push(newCoin);
     await appUser.save();
 
+    groupedCoinsCache = null;
+    groupedCoinsTimestamp = 0;
+
+
     // Yeni eklenen coin'i almak için
     const addedCoin = appUser.coins[appUser.coins.length - 1];
 
@@ -1179,6 +1309,9 @@ router.delete(
       influencer.coins.pull(req.params.coinId); // Coin'i coins dizisinden kaldırıyoruz
 
       await appUser.save();
+
+      groupedCoinsCache = null;
+      groupedCoinsTimestamp = 0;      
 
       res.status(200).json({ message: "Coin silindi" });
     } catch (err) {
@@ -1270,6 +1403,9 @@ router.put(
       coin.shareMarketCap = req.body.shareMarketCap || coin.shareMarketCap;
 
       await appUser.save();
+      groupedCoinsCache = null;
+      groupedCoinsTimestamp = 0;
+
       res.json(coin);
     } catch (err) {
       console.error("Coin güncellenirken hata oluştu:", err);
